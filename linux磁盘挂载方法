@@ -1,0 +1,68 @@
+目前磁盘挂载主要有以下四种方法：
+1.	PV直接挂载：即将磁盘建成PV，直接挂载到目录上。此种方法OS直接操作磁盘，读写速率最快。适用于磁盘整块使用不需要分区的情况；
+2.	fdisk分区挂载：通过fdisk工具将磁盘划分为多个分区，挂载在多个目录上使用。因为fdisk工具操作过程中提示非常详尽，因此操作简单，容易上手。
+此种方法适用于需要将磁盘分成两个及以上的分区使用的情况。
+3.	lvm挂载：lvm即逻辑卷管理，是非常强大的工具。通过lvm可以将多块磁盘组成卷组（VG），再将VG划分成多个逻辑卷（LV）使用。
+最大的好处在于lvm支持动态扩展，特别适用于对于空间需求不明确同时又不能停机的环境中。
+4.	parted分区挂载：fdisk工具支持对2T以下的磁盘进行分区，超过2T的磁盘就需要parted工具了。但是parted工具操作过程中没有相关提示，
+对于操作者的技能要求较高，不容易上手。此种方法适用于超过2T的大磁盘分区，小磁盘需要分区的情况，建议使用方法
+
+	PV直接挂载
+假设需要挂载在/opt/home目录上。
+#pvcreate /dev/xvde			#建立pv
+#mkfs.ext3 /dev/xvde		#将pv格式化为ext3类型的文件系统
+	或：#mkfs -t ext3 /dev/xvde
+# echo "/dev/xvde /opt/home ext3 defaults 0 0" >> /etc/fstab
+	#将挂载信息写入文件，系统重启后也会自动挂载
+#fatab文件会在本文后面详解。
+#mount -a
+#系统会读取fstab文件中的挂载信息，将刚刚添加的信息挂载，即将pv挂载到目录/opt/home上。
+注意：最后一步，正常情况下是没有任何报错，通过df -h即可查看到/dev/xvde已经挂载到/opt/home目录下了。但是如果出现报错，则要根据报错信息及时处理，
+否则重启后系统可能会崩溃。
+
+lvm挂载
+假设需要将磁盘分为一块50G和一块10G的分区，分别挂载在/opt/home以及/home上。假设/opt/home分区后期可能需要动态扩展。
+# pvcreate /dev/xvde	建立PV
+# vgcreate vgdata /dev/xvde	建立VG，名称为vgdata，可自定义
+# lvcreate -L 50G -n lv01 vgdata	在vgdata上建立50G大小的lv，名称为lv01，可自定义
+# lvcreate -L 10G -n lv02 vgdata	在vgdata上建立10G大小的第2个lv
+# mkfs.ext3 /dev/vgdata/lv01		格式化lv为ext3文件系统
+# mkfs.ext3 /dev/vgdata/lv02
+# mount /dev/vgdata/lv01 /opt/home	分区挂载
+# mount /dev/vgdata/lv02 /home
+
+注意：到这边已经挂载完成，为什么没有像前两种方法一样写到fstab文件中呢？实际上，linux系统默认vg是不自动激活的。因此，即便我们把挂载信息写到
+fstab文件中，重启后也会因为找不到设备而无法完成挂载。
+在这边介绍两种方法实现开机自动挂载：
+方法1：设置开机vg自动激活
+# vi /etc/sysconfig/lvm	系统启动时将发现的VG自动激活
+#
+LVM_ACTIVATED_ON_DISCOVERED="disable"
+
+# chkconfig boot.lvm on	系统默认启动lvm
+# echo "/dev/vgdata/lv01 /opt/home ext3 defaults 0 0" >> /etc/fstab
+# echo "/dev/vgdata/lv02 /home ext3 defaults 0 0" >> /etc/fstab
+方法2：通过添加启动前脚本实现激活和挂载
+# touch /etc/init.d/before.local	创建脚本
+# echo "vgchange -a y vgdata" >> /etc/init.d/before.local
+# echo "mount -t ext3 -o rw /dev/vgdata/vg01 /opt/home" >> /etc/init.d/before.local
+# echo "mount -t ext3 -o rw /dev/vgdata/vg02 /home" >> /etc/init.d/before.local
+这边的vg名称和lv名称请根据实际情况更改。
+这样机器重启后磁盘也能自动挂载了。
+
+6	lvm动态扩展
+使用lvm管理的目的就在于可以动态扩展。接着第五节的内容，一块100G的数据盘，目前使用了60G的空间，还剩余40G的空间。假设/opt/home分区目前空间不足，
+需要扩展20G，即从原来的50G扩容到70G。
+# lvextend -L 70G /dev/vgdata/lv01	将逻辑卷lv01扩容到70G大小
+# resize2fs /dev/vgdata/lv01		动态扩展到现有分区中（整个过程中不停机）
+之后可以通过df -h查看分区，已经变为70G了。
+
+当然，如果磁盘已经全部分完，可以再申请一块数据盘，假设为/dev/xvdf，通过pvcreate，vgextend添加到我们之前创建的vg中，之后的步骤跟上面一样
+# pvcreate /dev/xvdf		将磁盘建成PV
+# vgextend vgdata /dev/xvdf		将新建的PV加入到原先的vgdata中
+
+
+
+
+
+
