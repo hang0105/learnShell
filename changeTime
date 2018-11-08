@@ -1,0 +1,35 @@
+#!/bin/bash
+
+while read line
+do
+ipaddr=`echo $line | awk {'print $1'}`
+passwd=`echo $line | awk {'print $2'}`
+datetmp=$(date +"%H:%M:%S %Y-%m-%d")
+
+/usr/bin/expect<<EOF
+set timeout 30
+
+spawn ssh -l root $ipaddr
+expect {
+      "*yes/n*" {
+                send "yes\r"
+                expect "*assword:"
+                send "$passwd\r"
+                }
+     "*assword:" {
+                send "$passwd\r"
+                }
+     }
+expect "*#*"
+send "mv /etc/localtime /etc/localtime.bak\r"
+expect "*#*"
+send "ln -s /usr/share/zoneinfo/Asia/Shanghai /etc/localtime\r"
+expect "*#*"
+send "date -s \"$datetmp\"\r"
+expect "*#*"
+send "hwclock -w\r"
+expect "*#*"
+send "exit\r"
+expect "*#*"
+EOF
+done<./xxx.txt
