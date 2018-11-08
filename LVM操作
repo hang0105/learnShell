@@ -1,0 +1,24 @@
+1.磁盘初始化
+-------------------------------------------------------------------------------
+pvcreate /dev/xvde
+vgcreate vg1 /dev/xvde 
+vgdisplay
+lvcreate -l 12799 -n lv1 vg1
+mkfs.ext3 -j /dev/vg1/lv1
+tune2fs -c 0 -i 0 /dev/vg1/lv1
+mkdir /var/lib/mysql
+mount /dev/vg1/lv1 /var/lib/mysql/
+echo "/dev/vg1/lv1        /var/lib/mysql       ext3       defaults               0 0 " >>/etc/fstab
+df -h
+2.磁盘扩容
+---------------------------------------------------------------------------------------------------
+pvcreate /dev/xvdf
+vgextend vg1 /dev/xvdf
+vgdisplay
+lvextend  -L 99.99g /dev/vg1/lv1
+resize2fs /dev/vg1/lv1
+df -h
+----------------------------------------------------------------------------------------------------
+系统重启磁盘不能自动挂载
+lvchange -ay /dev/vg1/lv1
+chkconfig boot.lvm on
